@@ -1,0 +1,7 @@
+governed-chronomemory-os-overview-v3.md
+phase1-implementation-guide.md
+phase1-implementation-report.md
+phase2-implementation-guide.md
+.env
+__pycache__/
+chronomemory_audit.db
