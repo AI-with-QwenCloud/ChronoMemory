@@ -6,19 +6,26 @@ from dotenv import load_dotenv
 
 import contradiction_gate
 import vigil
-from extractor import extract_facts
+from extractor import ExtractionError, extract_facts
 
 load_dotenv()
 
 AUDIT_DB_PATH = "chronomemory_audit.db"
 
+# schema.sql sizes the ivfflat index for a much larger table (lists=100);
+# Postgres defaults ivfflat.probes to 1, which searches roughly 1/lists of
+# the data per query — on a small/medium table that makes nearest-neighbor
+# lookups (recall, contradiction_gate) miss real matches unpredictably.
+# sqrt(lists) is the standard starting point for probes.
+IVFFLAT_PROBES = 10
 
-def _log_failure(detail: str) -> None:
+
+def _log_failure(event_type: str, detail: str) -> None:
     conn = sqlite3.connect(AUDIT_DB_PATH)
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO audit_log (event_type, detail) VALUES (?, ?)",
-        ("write_failure", detail),
+        (event_type, detail),
     )
     conn.commit()
     conn.close()
@@ -33,11 +40,15 @@ def write_loop(turn_text: str, provenance: str) -> None:
     )
     try:
         cur = conn.cursor()
+        cur.execute("SET ivfflat.probes = %s", (IVFFLAT_PROBES,))
 
         try:
             facts = extract_facts(turn_text)
+        except ExtractionError as e:
+            _log_failure(f"extraction_{e.category}", str(e))
+            return
         except Exception as e:
-            _log_failure(f"extraction failed: {e}")
+            _log_failure("write_failure", f"extraction failed (unexpected): {e}")
             return
 
         for fact in facts:
@@ -64,6 +75,6 @@ def write_loop(turn_text: str, provenance: str) -> None:
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                _log_failure(f"failed to commit fact {fact!r}: {e}")
+                _log_failure("write_failure", f"failed to commit fact {fact!r}: {e}")
     finally:
         conn.close()

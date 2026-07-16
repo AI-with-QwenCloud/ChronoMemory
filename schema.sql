@@ -21,7 +21,8 @@ CREATE TABLE memories (
                          CHECK (status IN ('active', 'archived', 'superseded')),
     superseded_by        UUID REFERENCES memories(id),
     provenance           TEXT NOT NULL
-                         CHECK (provenance IN ('user_turn', 'agent_turn', 'tool_output', 'stdout', 'external_doc')),
+                         CHECK (provenance IN ('user_turn', 'agent_turn', 'tool_output', 'stdout',
+                                                'third_party_message', 'external_doc', 'web_content')),
     trust_score          DOUBLE PRECISION NOT NULL,
     contradiction_log_id UUID, -- FK added below, after contradiction_logs exists
     last_accessed        TIMESTAMPTZ,

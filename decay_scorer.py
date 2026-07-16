@@ -16,11 +16,15 @@ def effective_half_life(entry: MemoryEntry) -> float:
     return ETA_BASE_DAYS * multiplier
 
 
-def score(entry: MemoryEntry, now: datetime) -> float:
+def freshness(entry: MemoryEntry, now: datetime) -> float:
     tau = entry.last_accessed or entry.timestamp
     elapsed_days = max((now - tau).total_seconds() / 86400, 0)
     eta_i = effective_half_life(entry)
-    return entry.importance * entry.relevance_score * math.exp(-((elapsed_days / eta_i) ** KAPPA))
+    return math.exp(-((elapsed_days / eta_i) ** KAPPA))
+
+
+def score(entry: MemoryEntry, now: datetime) -> float:
+    return entry.importance * entry.relevance_score * freshness(entry, now)
 
 
 def is_prunable(memory_score: float) -> bool:

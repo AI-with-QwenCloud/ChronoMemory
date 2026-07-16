@@ -61,6 +61,12 @@ conn = psycopg2.connect(
     password=os.environ["CHRONOMEM_DB_PASSWORD"],
 )
 cur = conn.cursor()
+# schema.sql sizes the ivfflat index for a much larger table (lists=100);
+# Postgres defaults ivfflat.probes to 1, which searches roughly 1/lists of
+# the data per query and can make recall()'s nearest-neighbor step miss
+# real matches unpredictably on a table this size.
+cur.execute("SET ivfflat.probes = 10")
+conn.commit()
 
 # 3. Insert all 20 mock memories.
 for e in entries:

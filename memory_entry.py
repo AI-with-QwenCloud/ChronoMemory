@@ -4,14 +4,26 @@ from typing import Optional
 import uuid
 
 VALID_STATUS = {"active", "archived", "superseded"}
-VALID_PROVENANCE = {"user_turn", "agent_turn", "tool_output", "stdout", "external_doc"}
+VALID_PROVENANCE = {
+    "user_turn", "agent_turn", "tool_output", "stdout",
+    "third_party_message", "external_doc", "web_content",
+}
 
+# third_party_message: a named person other than the current user (Slack, a
+# PR comment, a ticket) — more trustworthy than an anonymous document since
+# it's attributable to someone real, but never as trusted as the person
+# actually driving this session.
+# web_content: fetched from a URL — the least controlled source in the
+# table (anyone on the open internet can shape it), so it sits below
+# external_doc, not beside it.
 TRUST_SCORES = {
     "user_turn": 1.0,
     "agent_turn": 0.7,
     "tool_output": 0.6,
     "stdout": 0.6,
+    "third_party_message": 0.55,
     "external_doc": 0.4,
+    "web_content": 0.3,
 }
 
 VIGIL_FLAG_THRESHOLD = 0.5

@@ -20,6 +20,20 @@ trivia).
 If the turn contains no durable facts, return an empty array: []"""
 
 
+class ExtractionError(Exception):
+    """A genuine extraction failure — distinct from the model legitimately
+    returning an empty list, which is a normal outcome, not an error.
+
+    `category` lets callers (and the audit log) tell a transient infra
+    problem apart from the model returning something the code can't parse,
+    instead of collapsing both into one generic failure.
+    """
+
+    def __init__(self, category: str, detail: str):
+        self.category = category  # "network" | "malformed_response"
+        super().__init__(f"{category}: {detail}")
+
+
 def _strip_code_fence(text: str) -> str:
     text = text.strip()
     if text.startswith("```"):
@@ -32,25 +46,32 @@ def _strip_code_fence(text: str) -> str:
 
 
 def extract_facts(turn_text: str) -> list[dict]:
-    response = chat(
-        "extractor",
-        [
-            {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-            {"role": "user", "content": turn_text},
-        ],
-    )
+    try:
+        response = chat(
+            "extractor",
+            [
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": turn_text},
+            ],
+        )
+    except Exception as e:
+        raise ExtractionError("network", str(e)) from e
+
     content = response["choices"][0]["message"]["content"]
-    facts = json.loads(_strip_code_fence(content))
+    try:
+        facts = json.loads(_strip_code_fence(content))
+    except json.JSONDecodeError as e:
+        raise ExtractionError("malformed_response", f"invalid JSON: {e}") from e
 
     if not isinstance(facts, list):
-        raise ValueError(f"expected a JSON array of facts, got: {facts!r}")
+        raise ExtractionError("malformed_response", f"expected a JSON array of facts, got: {facts!r}")
 
     for fact in facts:
         if not isinstance(fact, dict) or "text" not in fact or "importance" not in fact:
-            raise ValueError(f"malformed fact entry: {fact!r}")
+            raise ExtractionError("malformed_response", f"malformed fact entry: {fact!r}")
         if not isinstance(fact["text"], str) or not fact["text"]:
-            raise ValueError(f"fact 'text' must be a non-empty string: {fact!r}")
+            raise ExtractionError("malformed_response", f"fact 'text' must be a non-empty string: {fact!r}")
         if not isinstance(fact["importance"], (int, float)):
-            raise ValueError(f"fact 'importance' must be a number: {fact!r}")
+            raise ExtractionError("malformed_response", f"fact 'importance' must be a number: {fact!r}")
 
     return facts
