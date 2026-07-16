@@ -4,9 +4,8 @@ import sqlite3
 import psycopg2
 from dotenv import load_dotenv
 
-import contradiction_gate
-import vigil
-from extractor import ExtractionError, extract_facts
+from write_path import contradiction_gate, vigil
+from write_path.extractor import ExtractionError, extract_facts
 
 load_dotenv()
 

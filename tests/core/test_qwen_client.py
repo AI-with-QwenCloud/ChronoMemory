@@ -1,4 +1,4 @@
-from qwen_client import chat
+from core.qwen_client import chat
 
 for role in ["agent", "extractor", "scorer"]:
     result = chat(role, [{"role": "user", "content": "Say OK."}])

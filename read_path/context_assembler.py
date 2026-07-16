@@ -6,9 +6,9 @@
 
 from datetime import datetime
 
-import decay_scorer
-import trim
-from memory_entry import MemoryEntry
+from core import trim
+from core.memory_entry import MemoryEntry
+from read_path import decay_scorer
 
 
 def _pinned_message(text: str) -> dict:

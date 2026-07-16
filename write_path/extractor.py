@@ -1,6 +1,6 @@
 import json
 
-from qwen_client import chat
+from core.qwen_client import chat
 
 EXTRACTION_SYSTEM_PROMPT = """You are the memory-extraction stage of an AI coding assistant. Given a \
 single conversation turn, extract any durable, standalone facts about the \

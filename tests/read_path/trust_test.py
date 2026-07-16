@@ -8,9 +8,9 @@ from datetime import datetime, timedelta, timezone
 import psycopg2
 from dotenv import load_dotenv
 
-from embedder import embed
-from memory_entry import MemoryEntry
-from trust import (
+from core.embedder import embed
+from core.memory_entry import MemoryEntry
+from read_path.trust import (
     CORROBORATION_BONUS_CAP,
     CORROBORATION_BONUS_PER_LINK,
     STALE_ACCESS_THRESHOLD,

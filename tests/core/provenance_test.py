@@ -2,7 +2,7 @@
 DB, no network, no embedding model load. Should be instant and can never
 flake; run this first when touching provenance or trust levels.
 """
-from memory_entry import (
+from core.memory_entry import (
     EMBEDDING_DIM,
     TRUST_SCORES,
     VALID_PROVENANCE,

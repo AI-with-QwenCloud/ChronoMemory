@@ -2,8 +2,8 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
-from memory_entry import MemoryEntry
-from embedder import embed
+from core.embedder import embed
+from core.memory_entry import MemoryEntry
 
 load_dotenv()
 

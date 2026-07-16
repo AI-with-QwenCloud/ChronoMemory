@@ -1,7 +1,7 @@
 import sqlite3
 
-from embedder import embed
-from memory_entry import MemoryEntry
+from core.embedder import embed
+from core.memory_entry import MemoryEntry
 
 AUDIT_DB_PATH = "chronomemory_audit.db"
 

@@ -1,7 +1,7 @@
 import math
 from datetime import datetime
 
-from memory_entry import MemoryEntry
+from core.memory_entry import MemoryEntry
 
 ETA_BASE_DAYS = 7.0
 KAPPA = 0.8

@@ -1,6 +1,6 @@
 import json
 
-from qwen_client import chat
+from core.qwen_client import chat
 
 PINNED_TEXT = (
     "You are an assistant operating under the Governed ChronoMemory-OS "

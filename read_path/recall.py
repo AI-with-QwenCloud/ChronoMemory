@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-import decay_scorer
-from embedder import embed
-from memory_entry import MemoryEntry
+from core.embedder import embed
+from core.memory_entry import MemoryEntry
+from read_path import decay_scorer
 
 ENTRY_COLUMNS = """id, text, embedding, importance, relevance_score, access_count,
                    status, provenance, trust_score, last_accessed, timestamp"""

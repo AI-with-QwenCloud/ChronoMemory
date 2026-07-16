@@ -1,7 +1,7 @@
 import json
 
-from qwen_client import chat
-from prompts import SYSTEM_PROMPT, PINNED_PROFILE
+from core.prompts import PINNED_PROFILE, SYSTEM_PROMPT
+from core.qwen_client import chat
 
 
 def pinned_message(text: str) -> dict:

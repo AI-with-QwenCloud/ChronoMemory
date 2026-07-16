@@ -7,17 +7,11 @@ import psycopg2
 import streamlit as st
 from dotenv import load_dotenv
 
-import context_assembler
-import contradiction_gate
-import decay_scorer
-import extractor
-import qwen_client
-import recall
-import trust
-import vigil
-import write_loop
-from embedder import embed
-from prompts import PINNED_PROFILE, SYSTEM_PROMPT
+from core import qwen_client
+from core.embedder import embed
+from core.prompts import PINNED_PROFILE, SYSTEM_PROMPT
+from read_path import context_assembler, decay_scorer, recall, trust
+from write_path import contradiction_gate, extractor, vigil, write_loop
 
 DEMO_MODE = os.environ.get("CHRONOMEM_DEMO_MODE", "").lower() == "true"
 
@@ -132,8 +126,9 @@ with st.sidebar:
         rows = scur.fetchall()
 
         now = datetime.now(timezone.utc)
-        for row in rows:
-            entry = recall._row_to_entry(row)
+        entries = [recall._row_to_entry(row) for row in rows]
+        composite_by_id = trust.composite_trust_batch(scur, entries, now)
+        for entry in entries:
             decayed = max(0.0, min(decay_scorer.score(entry, now), 1.0))
             status_meta = STATUS_META.get(entry.status, {"label": entry.status, "color": "#666"})
             prov_meta = PROVENANCE_META.get(entry.provenance, {"label": entry.provenance, "color": "#666"})
@@ -141,7 +136,7 @@ with st.sidebar:
             st.markdown(f"**{entry.text}**")
             st.progress(decayed, text=f"{decayed:.0%} relevance")
 
-            composite = trust.composite_trust(scur, entry, now)
+            composite = composite_by_id[entry.id]
             trust_delta = composite - entry.trust_score
             if trust_delta > 0.001:
                 reason = " — corroborated by linked facts"
