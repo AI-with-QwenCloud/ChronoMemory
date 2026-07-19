@@ -35,6 +35,7 @@ class MemoryEntry:
     text: str
     embedding: list[float]
     provenance: str
+    user_id: str
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     importance: float = 0.5
@@ -48,6 +49,8 @@ class MemoryEntry:
     kv_slot_id: Optional[str] = None
 
     def __post_init__(self):
+        if not self.user_id:
+            raise ValueError("user_id is required")
         if len(self.embedding) != EMBEDDING_DIM:
             raise ValueError(
                 f"embedding must be {EMBEDDING_DIM}-dim, got {len(self.embedding)}"
