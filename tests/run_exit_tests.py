@@ -15,6 +15,7 @@ FAST_TESTS = [
     "tests.core.provenance_test",
     "tests.read_path.phase2_exit_test",
     "tests.write_path.phase3_pipeline_test",
+    "tests.write_path.user_isolation_test",
     "tests.read_path.trust_test",
 ]
 
