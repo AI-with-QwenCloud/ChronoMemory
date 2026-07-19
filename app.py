@@ -114,14 +114,14 @@ def _signup(cur, conn, username: str, password: str) -> str | None:
     return None
 
 
-def dispatch_write(turn_text: str, provenance: str) -> None:
+def dispatch_write(turn_text: str, provenance: str, user_id: str) -> None:
     """Fire-and-forget for real chat turns — the whole point is that the user never waits on this."""
     threading.Thread(
-        target=write_loop.write_loop, args=(turn_text, provenance), daemon=True
+        target=write_loop.write_loop, args=(turn_text, provenance, user_id), daemon=True
     ).start()
 
 
-def run_blocking_write(turn_text: str, provenance: str, spinner_text: str) -> None:
+def run_blocking_write(turn_text: str, provenance: str, user_id: str, spinner_text: str) -> None:
     """For writes the user explicitly triggers via a form (not organic chat turns).
 
     A backgrounded write finishes after Streamlit has already rendered this run, so
@@ -130,7 +130,7 @@ def run_blocking_write(turn_text: str, provenance: str, spinner_text: str) -> No
     Blocking here is a deliberate exception to the async chat-turn write path.
     """
     with st.spinner(spinner_text):
-        write_loop.write_loop(turn_text, provenance)
+        write_loop.write_loop(turn_text, provenance, user_id)
     st.rerun()
 
 
@@ -181,7 +181,10 @@ with st.sidebar:
     with memories_tab:
         sconn = get_connection()
         scur = sconn.cursor()
-        scur.execute(f"SELECT {recall.ENTRY_COLUMNS} FROM memories ORDER BY timestamp DESC LIMIT 50")
+        scur.execute(
+            f"SELECT {recall.ENTRY_COLUMNS} FROM memories WHERE user_id = %s ORDER BY timestamp DESC LIMIT 50",
+            (user_id,),
+        )
         rows = scur.fetchall()
 
         now = datetime.now(timezone.utc)
@@ -210,7 +213,9 @@ with st.sidebar:
         fconn = sqlite3.connect(AUDIT_DB_PATH)
         fcur = fconn.cursor()
         fcur.execute(
-            "SELECT id, text, provenance, trust_score, flagged_at FROM flagged_memories ORDER BY flagged_at DESC"
+            "SELECT id, text, provenance, trust_score, flagged_at FROM flagged_memories "
+            "WHERE user_id = ? ORDER BY flagged_at DESC",
+            (user_id,),
         )
         flagged_rows = fcur.fetchall()
         fconn.close()
@@ -230,20 +235,20 @@ with st.sidebar:
                 pcur = pconn.cursor()
                 pcur.execute(
                     """
-                    INSERT INTO memories (text, embedding, provenance, trust_score, status)
-                    VALUES (%s, %s::vector, %s, %s, 'active')
+                    INSERT INTO memories (text, embedding, provenance, trust_score, status, user_id)
+                    VALUES (%s, %s::vector, %s, %s, 'active', %s)
                     """,
-                    (ftext, embedding, fprov, ftrust),
+                    (ftext, embedding, fprov, ftrust, user_id),
                 )
                 pconn.commit()
 
                 aconn = sqlite3.connect(AUDIT_DB_PATH)
                 acur = aconn.cursor()
                 acur.execute(
-                    "INSERT INTO audit_log (event_type, detail) VALUES (?, ?)",
-                    ("manually_promoted", f"promoted flagged id={fid} provenance={fprov}"),
+                    "INSERT INTO audit_log (event_type, detail, user_id) VALUES (?, ?, ?)",
+                    ("manually_promoted", f"promoted flagged id={fid} provenance={fprov}", user_id),
                 )
-                acur.execute("DELETE FROM flagged_memories WHERE id = ?", (fid,))
+                acur.execute("DELETE FROM flagged_memories WHERE id = ? AND user_id = ?", (fid, user_id))
                 aconn.commit()
                 aconn.close()
 
@@ -328,7 +333,7 @@ with st.expander("+ Add external context", expanded=False):
     source_kind = st.radio("Source", list(SOURCE_FORM_OPTIONS.keys()))
     if st.button("Add to memory", key="add_context_btn") and context_text.strip():
         provenance = SOURCE_FORM_OPTIONS[source_kind]
-        run_blocking_write(context_text, provenance, "Extracting facts and checking trust (VIGIL)...")
+        run_blocking_write(context_text, provenance, user_id, "Extracting facts and checking trust (VIGIL)...")
 
 if "history" not in st.session_state:
     st.session_state.history = []
@@ -344,10 +349,7 @@ if user_text:
     with st.chat_message("user"):
         st.markdown(user_text)
 
-    conn = get_connection()
-    cur = conn.cursor()
-
-    candidates = recall.recall(cur, user_text, top_k=10)
+    candidates = recall.recall(cur, user_text, user_id, top_k=10)
     messages = context_assembler.assemble_context(
         cur,
         SYSTEM_PROMPT,
@@ -365,5 +367,5 @@ if user_text:
         st.markdown(reply_text)
     st.session_state.history.append({"role": "assistant", "content": reply_text})
 
-    dispatch_write(user_text, "user_turn")
-    dispatch_write(reply_text, "agent_turn")
+    dispatch_write(user_text, "user_turn", user_id)
+    dispatch_write(reply_text, "agent_turn", user_id)
