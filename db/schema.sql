@@ -1,5 +1,5 @@
 -- Governed ChronoMemory-OS — Phase 1 schema
--- Three tables: memories -> relational_links -> contradiction_logs
+-- Four tables: users -> memories -> relational_links -> contradiction_logs
 -- (memories.contradiction_log_id is wired up via ALTER TABLE at the bottom,
 -- since contradiction_logs itself references memories.id and would
 -- otherwise create a circular forward reference.)
@@ -7,9 +7,18 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- for gen_random_uuid()
 
+-- 0. users — one row per person; every memory belongs to exactly one user
+CREATE TABLE users (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 1. memories — the core table
 CREATE TABLE memories (
     id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id              UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     serial_no            BIGSERIAL UNIQUE NOT NULL, -- deterministic max(serial_no) contradiction resolution
     text                 TEXT NOT NULL,
     embedding            VECTOR(384) NOT NULL,
@@ -35,6 +44,9 @@ CREATE INDEX idx_memories_embedding_cosine
 
 -- Read path filters on status = 'active' constantly.
 CREATE INDEX idx_memories_status ON memories (status);
+
+-- Every read/write path query filters by user_id first.
+CREATE INDEX idx_memories_user ON memories (user_id);
 
 -- 2. relational_links — spreading-activation edges (starts empty by design)
 CREATE TABLE relational_links (
