@@ -19,18 +19,18 @@ AUDIT_DB_PATH = "chronomemory_audit.db"
 IVFFLAT_PROBES = 10
 
 
-def _log_failure(event_type: str, detail: str) -> None:
+def _log_failure(event_type: str, detail: str, user_id: str) -> None:
     conn = sqlite3.connect(AUDIT_DB_PATH)
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO audit_log (event_type, detail) VALUES (?, ?)",
-        (event_type, detail),
+        "INSERT INTO audit_log (event_type, detail, user_id) VALUES (?, ?, ?)",
+        (event_type, detail, user_id),
     )
     conn.commit()
     conn.close()
 
 
-def write_loop(turn_text: str, provenance: str) -> None:
+def write_loop(turn_text: str, provenance: str, user_id: str) -> None:
     conn = psycopg2.connect(
         host=os.environ["CHRONOMEM_DB_HOST"],
         dbname=os.environ["CHRONOMEM_DB_NAME"],
@@ -44,15 +44,15 @@ def write_loop(turn_text: str, provenance: str) -> None:
         try:
             facts = extract_facts(turn_text)
         except ExtractionError as e:
-            _log_failure(f"extraction_{e.category}", str(e))
+            _log_failure(f"extraction_{e.category}", str(e), user_id)
             return
         except Exception as e:
-            _log_failure("write_failure", f"extraction failed (unexpected): {e}")
+            _log_failure("write_failure", f"extraction failed (unexpected): {e}", user_id)
             return
 
         for fact in facts:
             try:
-                entry = vigil.build_entry(fact["text"], provenance, fact["importance"])
+                entry = vigil.build_entry(fact["text"], provenance, fact["importance"], user_id)
 
                 if entry.is_flagged():
                     vigil.hold(entry)
@@ -61,19 +61,19 @@ def write_loop(turn_text: str, provenance: str) -> None:
                 cur.execute(
                     """
                     INSERT INTO memories (id, text, embedding, importance, relevance_score,
-                                          access_count, status, provenance, trust_score)
-                    VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s)
+                                          access_count, status, provenance, trust_score, user_id)
+                    VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         entry.id, entry.text, entry.embedding, entry.importance,
                         entry.relevance_score, entry.access_count, entry.status,
-                        entry.provenance, entry.trust_score,
+                        entry.provenance, entry.trust_score, entry.user_id,
                     ),
                 )
                 contradiction_gate.resolve_and_link(cur, entry)
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                _log_failure("write_failure", f"failed to commit fact {fact!r}: {e}")
+                _log_failure("write_failure", f"failed to commit fact {fact!r}: {e}", user_id)
     finally:
         conn.close()

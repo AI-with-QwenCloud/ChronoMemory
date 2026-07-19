@@ -21,17 +21,17 @@ Return ONLY JSON (no markdown fences): {{"label": "contradiction" | "entailment"
 
 
 def find_similar_active(
-    cur, embedding: list[float], exclude_id: str, top_k: int = NLI_TOP_K
+    cur, embedding: list[float], exclude_id: str, user_id: str, top_k: int = NLI_TOP_K
 ) -> list[tuple[MemoryEntry, float]]:
     cur.execute(
         f"""
         SELECT {recall.ENTRY_COLUMNS}, embedding <=> %s::vector AS distance
         FROM memories
-        WHERE status = 'active' AND id != %s::uuid
+        WHERE status = 'active' AND id != %s::uuid AND user_id = %s
         ORDER BY embedding <=> %s::vector
         LIMIT %s
         """,
-        (embedding, exclude_id, embedding, top_k),
+        (embedding, exclude_id, user_id, embedding, top_k),
     )
     neighbors = []
     for *entry_row, distance in cur.fetchall():
@@ -57,7 +57,9 @@ def resolve_and_link(cur, new_entry: MemoryEntry) -> None:
     # new_entry must already be committed into `memories` before this runs —
     # `superseded_by` is FK-constrained against `memories.id`, so pointing an
     # old row's `superseded_by` at new_entry.id fails unless that row exists.
-    neighbors = find_similar_active(cur, new_entry.embedding, exclude_id=new_entry.id)
+    neighbors = find_similar_active(
+        cur, new_entry.embedding, exclude_id=new_entry.id, user_id=new_entry.user_id
+    )
 
     for neighbor_entry, _similarity in neighbors:
         label, score = classify(neighbor_entry.text, new_entry.text)

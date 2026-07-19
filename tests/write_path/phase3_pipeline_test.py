@@ -29,6 +29,8 @@ AUDIT_DB_PATH = "chronomemory_audit.db"
 # which looks exactly like model nondeterminism if you don't check for it.
 IVFFLAT_PROBES = 10
 
+TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 
 def pg_connect():
     conn = psycopg2.connect(
@@ -68,6 +70,13 @@ cur = conn.cursor()
 audit_conn = sqlite3.connect(AUDIT_DB_PATH)
 audit_cur = audit_conn.cursor()
 
+cur.execute(
+    "INSERT INTO users (id, username, password_hash) VALUES (%s, %s, 'unused') "
+    "ON CONFLICT (id) DO NOTHING",
+    (TEST_USER_ID, "test_fixture_user"),
+)
+conn.commit()
+
 cur.execute("SELECT COALESCE(max(serial_no), 0) FROM memories")
 starting_serial_no = cur.fetchone()[0]
 
@@ -79,7 +88,7 @@ try:
     wl.extract_facts = lambda turn_text: [
         {"text": "The user wants all new API endpoints to require authentication middleware.", "importance": 0.8}
     ]
-    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn")
+    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn", TEST_USER_ID)
 
     cur.execute("SELECT count(*) FROM memories WHERE status = 'active'")
     after_count = cur.fetchone()[0]
@@ -97,7 +106,7 @@ try:
     wl.extract_facts = lambda turn_text: [
         {"text": "The project disables input validation on all new endpoints.", "importance": 0.7}
     ]
-    wl.write_loop("irrelevant text — extract_facts is mocked", "external_doc")
+    wl.write_loop("irrelevant text — extract_facts is mocked", "external_doc", TEST_USER_ID)
 
     audit_cur.execute("SELECT count(*) FROM flagged_memories")
     flagged_after = audit_cur.fetchone()[0]
@@ -108,15 +117,15 @@ try:
     print("PASS: poisoned fact isolated in SQLite, never reached Postgres. (mocked)")
 
     # 3. Contradiction deterministically supersedes the old fact.
-    old_entry = build_entry("The project's database is MySQL.", "user_turn", 0.7)
+    old_entry = build_entry("The project's database is MySQL.", "user_turn", 0.7, TEST_USER_ID)
     cur.execute(
         """
-        INSERT INTO memories (id, text, embedding, importance, relevance_score,
+        INSERT INTO memories (id, user_id, text, embedding, importance, relevance_score,
                               access_count, status, provenance, trust_score)
-        VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s::vector, %s, %s, %s, %s, %s, %s)
         """,
         (
-            old_entry.id, old_entry.text, old_entry.embedding, old_entry.importance,
+            old_entry.id, old_entry.user_id, old_entry.text, old_entry.embedding, old_entry.importance,
             old_entry.relevance_score, old_entry.access_count, old_entry.status,
             old_entry.provenance, old_entry.trust_score,
         ),
@@ -127,7 +136,7 @@ try:
         {"text": "The project's database is PostgreSQL now, not MySQL.", "importance": 0.7}
     ]
     contradiction_gate.classify = lambda existing, new: ("contradiction", 0.97)
-    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn")
+    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn", TEST_USER_ID)
 
     cur.execute("SELECT status, superseded_by FROM memories WHERE id = %s", (old_entry.id,))
     status, superseded_by = cur.fetchone()
@@ -147,7 +156,7 @@ try:
         {"text": "The CI pipeline runs unit tests before every deploy.", "importance": 0.6}
     ]
     contradiction_gate.classify = lambda existing, new: ("neutral", 0.6)
-    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn")
+    wl.write_loop("irrelevant text — extract_facts is mocked", "user_turn", TEST_USER_ID)
 
     cur.execute("SELECT count(*) FROM relational_links WHERE link_type IN ('entailment', 'neutral')")
     links_after = cur.fetchone()[0]
@@ -159,7 +168,7 @@ try:
     failure_before = audit_cur.fetchone()[0]
 
     wl.extract_facts = lambda turn_text: (_ for _ in ()).throw(ValueError("simulated malformed LLM output"))
-    wl.write_loop("this call is designed to fail unexpectedly", "user_turn")
+    wl.write_loop("this call is designed to fail unexpectedly", "user_turn", TEST_USER_ID)
 
     audit_cur.execute("SELECT count(*) FROM audit_log WHERE event_type = 'write_failure'")
     failure_after = audit_cur.fetchone()[0]
@@ -174,7 +183,7 @@ try:
         raise ExtractionError("network", "simulated connection reset")
 
     wl.extract_facts = _network_failure
-    wl.write_loop("this call is designed to fail at the network layer", "user_turn")
+    wl.write_loop("this call is designed to fail at the network layer", "user_turn", TEST_USER_ID)
 
     audit_cur.execute("SELECT count(*) FROM audit_log WHERE event_type = 'extraction_network'")
     net_after = audit_cur.fetchone()[0]
