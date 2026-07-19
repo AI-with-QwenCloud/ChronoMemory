@@ -274,7 +274,7 @@ with st.sidebar:
                     with st.spinner("Extracting facts and checking trust (VIGIL)..."):
                         facts = extractor.extract_facts(poison_text)
                         candidates = [
-                            vigil.build_entry(f["text"], "external_doc", f["importance"]) for f in facts
+                            vigil.build_entry(f["text"], "external_doc", f["importance"], user_id) for f in facts
                         ]
                     if not candidates:
                         st.info("No durable facts were extracted from that text.")
