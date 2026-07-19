@@ -3,8 +3,10 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
+import bcrypt
 import psycopg2
 import streamlit as st
+import streamlit_authenticator as stauth
 from dotenv import load_dotenv
 
 from core import qwen_client
@@ -87,6 +89,31 @@ def get_connection():
     return conn
 
 
+def _load_credentials(cur) -> dict:
+    cur.execute("SELECT username, password_hash FROM users")
+    usernames = {
+        username: {"name": username, "password": password_hash, "email": username}
+        for username, password_hash in cur.fetchall()
+    }
+    return {"usernames": usernames}
+
+
+def _signup(cur, conn, username: str, password: str) -> str | None:
+    """Creates a new account. Returns an error message, or None on success."""
+    if not username or not password:
+        return "Username and password are required."
+    cur.execute("SELECT 1 FROM users WHERE username = %s", (username,))
+    if cur.fetchone():
+        return "That username is already taken."
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    cur.execute(
+        "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+        (username, password_hash),
+    )
+    conn.commit()
+    return None
+
+
 def dispatch_write(turn_text: str, provenance: str) -> None:
     """Fire-and-forget for real chat turns — the whole point is that the user never waits on this."""
     threading.Thread(
@@ -109,6 +136,38 @@ def run_blocking_write(turn_text: str, provenance: str, spinner_text: str) -> No
 
 st.set_page_config(page_title="Governed ChronoMemory-OS", layout="wide")
 st.title("Governed ChronoMemory-OS")
+
+conn = get_connection()
+cur = conn.cursor()
+
+authenticator = stauth.Authenticate(
+    _load_credentials(cur),
+    cookie_name="chronomemory_auth",
+    cookie_key=os.environ["CHRONOMEM_AUTH_COOKIE_KEY"],
+    cookie_expiry_days=30,
+)
+authenticator.login()
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status is False:
+    st.error("Username or password is incorrect.")
+if not auth_status:
+    if auth_status is None:
+        st.info("Log in above, or create an account below.")
+    with st.expander("Sign up", expanded=True):
+        new_username = st.text_input("Choose a username", key="signup_username")
+        new_password = st.text_input("Choose a password", type="password", key="signup_password")
+        if st.button("Create account", key="signup_btn"):
+            error = _signup(cur, conn, new_username, new_password)
+            if error:
+                st.error(error)
+            else:
+                st.success("Account created — log in above.")
+    st.stop()
+
+authenticator.logout()
+cur.execute("SELECT id FROM users WHERE username = %s", (st.session_state["username"],))
+user_id = str(cur.fetchone()[0])
 
 with st.sidebar:
     header_col, legend_col = st.columns([2, 1.4], vertical_alignment="center")
