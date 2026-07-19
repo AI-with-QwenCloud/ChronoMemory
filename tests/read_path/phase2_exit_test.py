@@ -13,6 +13,7 @@ from read_path.recall import recall
 load_dotenv()
 
 NOW = datetime.now(timezone.utc)
+TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 # (text, importance, days_ago, last_accessed_recent, access_count)
 SPECS = [
@@ -47,6 +48,7 @@ for text, importance, days_ago, recent_access, access_count in SPECS:
             text=text,
             embedding=embed(text),
             provenance="user_turn",
+            user_id=TEST_USER_ID,
             timestamp=NOW - timedelta(days=days_ago),
             importance=importance,
             access_count=access_count,
@@ -68,15 +70,22 @@ cur = conn.cursor()
 cur.execute("SET ivfflat.probes = 10")
 conn.commit()
 
+cur.execute(
+    "INSERT INTO users (id, username, password_hash) VALUES (%s, %s, 'unused') "
+    "ON CONFLICT (id) DO NOTHING",
+    (TEST_USER_ID, "test_fixture_user"),
+)
+conn.commit()
+
 # 3. Insert all 20 mock memories.
 for e in entries:
     cur.execute(
         """
-        INSERT INTO memories (id, text, embedding, timestamp, importance, relevance_score,
+        INSERT INTO memories (id, user_id, text, embedding, timestamp, importance, relevance_score,
                                access_count, status, provenance, trust_score, last_accessed)
-        VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
-        (e.id, e.text, e.embedding, e.timestamp, e.importance, e.relevance_score,
+        (e.id, e.user_id, e.text, e.embedding, e.timestamp, e.importance, e.relevance_score,
          e.access_count, e.status, e.provenance, e.trust_score, e.last_accessed),
     )
 conn.commit()
@@ -104,7 +113,7 @@ print(f"Seeded {len(LINKS)} relational_links.")
 
 # 5. Run dual-recall search.
 query = "What naming convention does the user prefer for variables?"
-candidates = recall(cur, query, top_k=10)
+candidates = recall(cur, query, TEST_USER_ID, top_k=10)
 conn.commit()
 print(f"recall() returned {len(candidates)} candidates.")
 assert len(candidates) > 0, "recall() returned no candidates"
@@ -163,6 +172,7 @@ clone_no_access = MemoryEntry(
     text="clone for half-life comparison",
     embedding=high_access_entry.embedding,
     provenance="user_turn",
+    user_id=TEST_USER_ID,
     timestamp=high_access_entry.timestamp,
     importance=high_access_entry.importance,
     access_count=0,
