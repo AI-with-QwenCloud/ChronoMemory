@@ -21,6 +21,7 @@ from read_path.trust import (
 load_dotenv()
 
 NOW = datetime.now(timezone.utc)
+TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def pg_connect():
@@ -36,6 +37,15 @@ def pg_connect():
     return conn
 
 
+def _ensure_test_user(cur, conn) -> None:
+    cur.execute(
+        "INSERT INTO users (id, username, password_hash) VALUES (%s, %s, 'unused') "
+        "ON CONFLICT (id) DO NOTHING",
+        (TEST_USER_ID, "test_fixture_user"),
+    )
+    conn.commit()
+
+
 def _cleanup_since(cur, conn, serial_no_floor: int) -> None:
     cur.execute("SELECT id FROM memories WHERE serial_no > %s", (serial_no_floor,))
     ids = [r[0] for r in cur.fetchall()]
@@ -49,12 +59,12 @@ def _cleanup_since(cur, conn, serial_no_floor: int) -> None:
 def _insert(cur, entry: MemoryEntry) -> None:
     cur.execute(
         """
-        INSERT INTO memories (id, text, embedding, importance, relevance_score,
+        INSERT INTO memories (id, user_id, text, embedding, importance, relevance_score,
                               access_count, status, provenance, trust_score, last_accessed)
-        VALUES (%s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s::vector, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
-            entry.id, entry.text, entry.embedding, entry.importance, entry.relevance_score,
+            entry.id, entry.user_id, entry.text, entry.embedding, entry.importance, entry.relevance_score,
             entry.access_count, entry.status, entry.provenance, entry.trust_score, entry.last_accessed,
         ),
     )
@@ -62,6 +72,7 @@ def _insert(cur, entry: MemoryEntry) -> None:
 
 conn = pg_connect()
 cur = conn.cursor()
+_ensure_test_user(cur, conn)
 cur.execute("SELECT COALESCE(max(serial_no), 0) FROM memories")
 starting_serial_no = cur.fetchone()[0]
 
@@ -69,7 +80,7 @@ try:
     # 1. No links, fresh, low access — composite equals the plain base trust score.
     plain = MemoryEntry(
         text="Plain fact with no corroboration.", embedding=embed("plain fact"),
-        provenance="tool_output", last_accessed=NOW,
+        provenance="tool_output", user_id=TEST_USER_ID, last_accessed=NOW,
     )
     _insert(cur, plain)
     conn.commit()
@@ -81,7 +92,7 @@ try:
     # 2. Corroborating entailment/neutral links raise the score, capped.
     corroborated = MemoryEntry(
         text="Corroborated fact.", embedding=embed("corroborated fact"),
-        provenance="tool_output", last_accessed=NOW,
+        provenance="tool_output", user_id=TEST_USER_ID, last_accessed=NOW,
     )
     _insert(cur, corroborated)
     conn.commit()
@@ -103,7 +114,7 @@ try:
     # 3. A 'contradiction' link must NOT count as corroboration.
     contradicted = MemoryEntry(
         text="Fact with an incoming contradiction link only.", embedding=embed("contradicted fact"),
-        provenance="tool_output", last_accessed=NOW,
+        provenance="tool_output", user_id=TEST_USER_ID, last_accessed=NOW,
     )
     _insert(cur, contradicted)
     conn.commit()
@@ -120,7 +131,7 @@ try:
     # 4. Frequently accessed + stale => staleness penalty applies.
     stale_popular = MemoryEntry(
         text="Popular but stale fact.", embedding=embed("stale popular fact"),
-        provenance="user_turn", access_count=STALE_ACCESS_THRESHOLD,
+        provenance="user_turn", user_id=TEST_USER_ID, access_count=STALE_ACCESS_THRESHOLD,
         timestamp=NOW - timedelta(days=365), last_accessed=NOW - timedelta(days=365),
     )
     _insert(cur, stale_popular)
@@ -135,7 +146,7 @@ try:
     # 5. Frequently accessed but still FRESH => no penalty.
     fresh_popular = MemoryEntry(
         text="Popular and still fresh fact.", embedding=embed("fresh popular fact"),
-        provenance="user_turn", access_count=STALE_ACCESS_THRESHOLD, last_accessed=NOW,
+        provenance="user_turn", user_id=TEST_USER_ID, access_count=STALE_ACCESS_THRESHOLD, last_accessed=NOW,
     )
     _insert(cur, fresh_popular)
     conn.commit()
