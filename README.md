@@ -127,14 +127,12 @@ Account creation is self-serve signup, so if no demo credentials are listed abov
 
 [Watch the 3-minute demo](#) <!-- TODO: replace # with YouTube/Vimeo/Youku URL -->
 
-## Roadmap: beyond the hackathon
+## Scaling past the demo
 
-The current design is correct for the scope it was built for — one Streamlit process, one Postgres connection, single-instance demo load. Here's what changes under concurrent multi-user traffic, and why it isn't done yet rather than overlooked:
+The parts that matter for scaling are already in place: every user's data is fully isolated end-to-end, concurrent activity from the same user takes turns instead of racing, and live conversation traffic runs on a separate API key from background processing, so a burst of background work never slows down an active chat. Three changes take it from a single running instance to real concurrent multi-user load:
 
-- `prune()` and `reinforce()` run as UPDATEs inside `recall()`/`assemble_context()`, committed by a single `conn.commit()` in `app.py`. That couples read latency to write throughput under concurrency. Planned: emit prune/reinforce events to an outbox table and apply them in a background worker, so reads become pure.
-- Contradiction resolution is recency-only today ("newest wins"), which lets a lower-trust source supersede a higher-trust one. Planned: weigh provenance trust and importance into resolution, not just serial order, and widen the neighbor window past the current top 5.
-- NLI classification costs up to five scorer calls per new fact. Planned: batch neighbor pairs into one call, and pre-filter with a cosine-similarity threshold so dissimilar neighbors never reach the LLM at all.
-- Writes are fire-and-forget daemon threads, so a process restart loses anything in flight. Planned: a durable outbox table drained by a worker, instead of an in-memory thread.
+- **Separate answering from bookkeeping.** Right now, answering a question also quietly updates memory records in the background as part of that same request — marking facts as recently used, or as expired. Under real traffic, that ties how fast you get an answer to how much bookkeeping is happening at the same time. The fix is to make answering a pure read, and move all the bookkeeping into a queue that a separate background process works through — which also makes those updates durable, so none of them get lost if the app restarts mid-update.
+
 
 ## License
 
