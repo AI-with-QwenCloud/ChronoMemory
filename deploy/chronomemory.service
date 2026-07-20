@@ -1,0 +1,20 @@
+[Unit]
+Description=ChronoMemory Streamlit app (Docker)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/chronomemory
+ExecStartPre=-/usr/bin/docker rm -f chronomemory-app
+ExecStart=/usr/bin/docker run --rm --name chronomemory-app \
+    --network host \
+    --env-file /opt/chronomemory/.env \
+    -v /opt/chronomemory/chronomemory_audit.db:/app/chronomemory_audit.db \
+    chronomemory-app
+ExecStop=/usr/bin/docker stop chronomemory-app
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

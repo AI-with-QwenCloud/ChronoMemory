@@ -1,8 +1,12 @@
+BRANCH_NOTES.md
 governed-chronomemory-os-overview-v3.md
 phase1-implementation-guide.md
 phase1-implementation-report.md
 phase2-implementation-guide.md
+phase4-cloud-deployment-guide.md
 .env
 __pycache__/
 chronomemory_audit.db
 phase3-implementation-guide.md
+docs/superpowers
+demo.md
