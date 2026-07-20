@@ -125,7 +125,7 @@ Account creation is self-serve signup, so if no demo credentials are listed abov
 
 ## Demo video
 
-[Watch the 3-minute demo](#) <!-- TODO: replace # with YouTube/Vimeo/Youku URL -->
+[Watch the 3-minute demo](https://youtu.be/27PIl8C0TAk) 
 
 ## Scaling past the demo
 
