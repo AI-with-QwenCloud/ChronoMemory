@@ -20,18 +20,18 @@ if ! docker ps -a --format '{{.Names}}' | grep -q "^${DB_CONTAINER}$"; then
         -p 127.0.0.1:5432:5432 \
         --restart unless-stopped \
         pgvector/pgvector:pg16
-    echo "==> Waiting for Postgres to accept connections"
-    until docker exec "${DB_CONTAINER}" pg_isready -U postgres >/dev/null 2>&1; do
-        sleep 2
-    done
-    docker exec -i "${DB_CONTAINER}" psql -U postgres -d chronomemory < "${APP_DIR}/db/schema.sql"
 fi
+echo "==> Waiting for Postgres to accept connections"
+until docker exec "${DB_CONTAINER}" pg_isready -U postgres >/dev/null 2>&1; do
+    sleep 2
+done
 
-echo "==> Initializing SQLite audit db (on host, bind-mounted into the container)"
+echo "==> Applying schema migrations (idempotent — safe on every run)"
+bash "${APP_DIR}/db/migrate.sh"
+
+echo "==> Applying SQLite audit db migrations (on host, bind-mounted into the container)"
 cd "${APP_DIR}"
-if [ ! -f chronomemory_audit.db ]; then
-    python3 db/init_sqlite.py
-fi
+python3 db/migrate_sqlite.py
 
 echo "==> Building app image"
 docker build -t chronomemory-app .

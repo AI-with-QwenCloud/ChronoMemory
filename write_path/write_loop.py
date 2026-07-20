@@ -58,6 +58,19 @@ def write_loop(turn_text: str, provenance: str, user_id: str) -> None:
                     vigil.hold(entry)
                     continue
 
+                # Concurrent writes for the same user (e.g. the user_turn and
+                # agent_turn dispatch_write threads for one chat turn) each run
+                # their own find_similar_active() neighbor search in
+                # resolve_and_link — without serializing them, two near-simultaneous
+                # writes can race past each other, each searching before the other's
+                # INSERT is visible, so neither ever discovers the other. A
+                # transaction-scoped advisory lock keyed on user_id forces
+                # concurrent writers for the same user to take turns, so every
+                # insert+resolve is guaranteed to see everything already committed
+                # for that user. Auto-released at commit/rollback below, so a crash
+                # or dropped connection can't leave it stuck.
+                cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", (user_id,))
+
                 cur.execute(
                     """
                     INSERT INTO memories (id, text, embedding, importance, relevance_score,

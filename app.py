@@ -102,6 +102,10 @@ def _signup(cur, conn, username: str, password: str) -> str | None:
     """Creates a new account. Returns an error message, or None on success."""
     if not username or not password:
         return "Username and password are required."
+    # streamlit_authenticator lowercases/strips usernames internally on login
+    # (authentication_controller.py), so credentials must be stored the same
+    # way or a post-login lookup by st.session_state["username"] won't match.
+    username = username.strip().lower()
     cur.execute("SELECT 1 FROM users WHERE username = %s", (username,))
     if cur.fetchone():
         return "That username is already taken."
